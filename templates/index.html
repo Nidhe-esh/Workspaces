@@ -164,6 +164,8 @@ html,body{
   box-shadow:var(--shadow);transition:all .12s;border-radius:0;white-space:nowrap;
 }
 .btn-o:hover{background:var(--black);color:var(--white);transform:translate(-2px,-2px);box-shadow:6px 6px 0 var(--black)}
+.btn-g{background:var(--green);color:#fff;border:2.5px solid var(--black);padding:7px 13px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:var(--font);box-shadow:var(--sh);transition:all .12s;border-radius:0;white-space:nowrap}
+.btn-g:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 var(--black)}
 .btn-r{
   background:var(--red);color:#fff;
   border:2.5px solid var(--black);
@@ -325,6 +327,27 @@ html,body{
 }
 .tagline .name:hover{color:var(--blue);border-bottom-color:var(--blue)}
 .dark .tagline .name:hover{color:#f5e642;border-bottom-color:#f5e642}
+
+/* Manual add panel */
+.add-panel{background:var(--black);border:2.5px solid var(--black);padding:14px 16px;margin-bottom:12px;box-shadow:var(--sh)}
+.add-panel-tabs{display:flex;gap:0;border-bottom:2px solid rgba(255,255,255,.12);margin-bottom:12px;padding-bottom:0}
+.add-panel-tab{padding:5px 14px;font-size:11px;font-weight:700;cursor:pointer;color:rgba(255,255,255,.4);border-bottom:2px solid transparent;margin-bottom:-2px;font-family:var(--font);transition:all .1s}
+.add-panel-tab.on{color:#f5e642;border-bottom-color:#f5e642}
+.add-panel-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.add-input{background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.18);padding:8px 12px;font-size:12px;color:#fff;font-family:var(--font);flex:1;outline:none;transition:border .1s;border-radius:0}
+.add-input:focus{border-color:#f5e642}
+.add-input::placeholder{color:rgba(255,255,255,.3)}
+.add-panel-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.added-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.added-pill{background:#f5e642;border:2px solid #0a0a0a;padding:3px 10px 3px 10px;font-size:10px;color:#0a0a0a;font-weight:700;display:flex;align-items:center;gap:6px}
+.added-pill button{background:none;border:none;cursor:pointer;font-size:11px;color:#0a0a0a;font-weight:900;padding:0;line-height:1;font-family:var(--font)}
+/* Manually-added cards */
+.app-card.manual-app,.app-card.manual-website{border-color:var(--blue);box-shadow:3px 3px 0 var(--blue)}
+.app-card.manual-app:hover,.app-card.manual-website:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 var(--blue)}
+.manual-tag{font-size:8px;letter-spacing:1.5px;color:var(--blue);font-weight:700;text-transform:uppercase;margin-bottom:5px}
+.app-name.blue{color:var(--blue)}
+.app-icon.blue-icon{background:#e8f0ff;border-color:var(--blue)}
+
 </style>
 </head>
 <body>
@@ -368,9 +391,38 @@ html,body{
         <div class="screen-title">NEW_WORKSPACE</div>
         <div class="screen-sub">Scan open apps → toggle what to keep → save your session.</div>
 
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
           <button class="btn-y" onclick="doScan()">[ ⟳ SCAN MY WORKSPACE ]</button>
+          <button class="btn-o" id="btn-add-new" onclick="toggleAddPanel('new')">[ + ADD MANUALLY ]</button>
           <span id="scan-msg" style="font-size:11px;color:var(--black)"></span>
+        </div>
+
+        <!-- Manual add panel -->
+        <div id="add-panel-new" style="display:none">
+          <div class="add-panel">
+            <div style="font-size:8.5px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.35);font-weight:700;margin-bottom:10px">→ Add app or site manually</div>
+            <div class="add-panel-tabs">
+              <div class="add-panel-tab on" id="ntab-app" onclick="switchTab('new','app')">Application</div>
+              <div class="add-panel-tab" id="ntab-site" onclick="switchTab('new','site')">Website / URL</div>
+            </div>
+            <div id="npanel-app">
+              <div class="add-panel-row">
+                <input class="add-input" id="n-app-name" placeholder="App name  e.g.  notion" style="flex:.9">
+                <input class="add-input" id="n-app-path" placeholder="Exe path  (optional)" style="flex:1.5">
+              </div>
+            </div>
+            <div id="npanel-site" style="display:none">
+              <div class="add-panel-row">
+                <input class="add-input" id="n-site-url" placeholder="URL  e.g.  https://linear.app" style="flex:1.4">
+                <input class="add-input" id="n-site-label" placeholder="Label  (optional)" style="flex:.9">
+              </div>
+            </div>
+            <div class="add-panel-actions">
+              <button class="btn-o" style="color:#fff;border-color:rgba(255,255,255,.25);font-size:11px;padding:6px 12px" onclick="toggleAddPanel('new')">[ CANCEL ]</button>
+              <button class="btn-g" style="font-size:11px;padding:6px 12px" onclick="addManualNew()">[ + ADD ]</button>
+            </div>
+            <div class="added-pills" id="n-added-pills"></div>
+          </div>
         </div>
 
         <div id="app-list" style="overflow-y:auto;flex:1;min-height:0"></div>
@@ -407,7 +459,37 @@ html,body{
           <button class="btn-y" onclick="showConfirm()">[ ▶ RESTORE ]</button>
           <button class="btn-r" onclick="deleteWS()">[ DELETE ]</button>
         </div>
-        <div style="font-size:8.5px;letter-spacing:2.5px;text-transform:uppercase;color:var(--black);opacity:.35;margin-bottom:11px;font-weight:700">→ toggle apps to include or exclude</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:8.5px;letter-spacing:2.5px;text-transform:uppercase;color:var(--black);opacity:.35;font-weight:700">→ toggle apps to include or exclude</div>
+          <button class="btn-o" id="btn-add-edit" onclick="toggleAddPanel('edit')" style="font-size:10.5px;padding:5px 11px">[ + ADD MORE ]</button>
+        </div>
+
+        <!-- Manual add panel inside edit mode -->
+        <div id="add-panel-edit" style="display:none">
+          <div class="add-panel" style="padding:12px 14px;margin-bottom:10px">
+            <div style="font-size:8.5px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.35);font-weight:700;margin-bottom:10px">→ Add to this workspace</div>
+            <div class="add-panel-tabs">
+              <div class="add-panel-tab on" id="etab-app" onclick="switchTab('edit','app')">Application</div>
+              <div class="add-panel-tab" id="etab-site" onclick="switchTab('edit','site')">Website / URL</div>
+            </div>
+            <div id="epanel-app">
+              <div class="add-panel-row">
+                <input class="add-input" id="e-app-name" placeholder="App name  e.g.  figma" style="flex:.9">
+                <input class="add-input" id="e-app-path" placeholder="Exe path  (optional)" style="flex:1.5">
+              </div>
+            </div>
+            <div id="epanel-site" style="display:none">
+              <div class="add-panel-row">
+                <input class="add-input" id="e-site-url" placeholder="URL  e.g.  https://linear.app" style="flex:1.4">
+                <input class="add-input" id="e-site-label" placeholder="Label  (optional)" style="flex:.9">
+              </div>
+            </div>
+            <div class="add-panel-actions" style="margin-top:10px">
+              <button class="btn-o" style="color:#fff;border-color:rgba(255,255,255,.25);font-size:11px;padding:5px 11px" onclick="toggleAddPanel('edit')">[ CANCEL ]</button>
+              <button class="btn-g" style="font-size:11px;padding:5px 11px" onclick="addManualEdit()">[ + ADD ]</button>
+            </div>
+          </div>
+        </div>
         <div id="edit-app-list" style="overflow-y:auto;flex:1;min-height:0"></div>
         <div class="tagline">manifested by <a class="name" href="https://www.linkedin.com/in/nidheeshgontiya/" target="_blank">Nidheesh</a> 🤍</div>
       </div>
