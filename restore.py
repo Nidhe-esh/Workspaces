@@ -2,35 +2,277 @@
 restore.py — Workspaces
 Launches saved apps with intelligent fallback logic.
 
-STATUS: STUB — will be implemented in Step 2.
-app.py returns stub results if this module raises NotImplementedError.
-
-When implemented:
-  pip install psutil
-
 Fallback chain:
   1. Exact exe path exists → subprocess.Popen(exe_path)
   2. Look up known install locations dict (Chrome, Firefox, VSCode, etc.)
   3. Extract file path from window_title via regex → open file
   4. File missing → open parent folder
   5. Parent missing → open grandparent
-  6. Nothing works → log "not found"
+  6. Nothing works → log result as "not_found"
+  
+Special handling:
+  - Websites: opened via webbrowser.open(url) or os.startfile(url)
+  - Apps: launched via subprocess.Popen(exe_path) with shell=True for protocol handlers
 """
+
+import logging
+import os
+import re
+import subprocess
+import webbrowser
+from pathlib import Path
+
+# Setup logging
+logger = logging.getLogger(__name__)
+
+
+def _normalize_url(url: str) -> str:
+    """Return a browser-safe URL with a scheme when possible."""
+    if not url:
+        return ""
+    value = url.strip()
+    if not value:
+        return ""
+    if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", value):
+        return value
+    if value.startswith(("mailto:", "file:", "about:")):
+        return value
+    return f"https://{value}"
+
+
+def _open_url_default(url: str) -> bool:
+    """Open a URL using the user's default browser/handler."""
+    target = _normalize_url(url)
+    if not target:
+        return False
+    try:
+        # On Windows this uses the user's default browser association.
+        os.startfile(target)
+        return True
+    except Exception:
+        try:
+            return webbrowser.open(target)
+        except Exception:
+            return False
+
+# Known application installation paths (fallback dict)
+KNOWN_APPS = {
+    "google_chrome": [
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    ],
+    "microsoft_edge": [
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    ],
+    "firefox": [
+        r"C:\Program Files\Mozilla Firefox\firefox.exe",
+        r"C:\Program Files (x86)\Mozilla Firefox\firefox.exe",
+    ],
+    "vs_code": [
+        r"C:\Users\{user}\AppData\Local\Programs\Microsoft VS Code\Code.exe",
+        r"C:\Program Files\Microsoft VS Code\Code.exe",
+        r"C:\Program Files (x86)\Microsoft VS Code\Code.exe",
+    ],
+    "visual_studio": [
+        r"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\devenv.exe",
+        r"C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\devenv.exe",
+        r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE\devenv.exe",
+    ],
+    "notepad": [
+        r"C:\Windows\System32\notepad.exe",
+    ],
+    "paint": [
+        r"C:\Windows\System32\mspaint.exe",
+    ],
+    "calculator": [
+        r"C:\Windows\System32\calc.exe",
+    ],
+    "explorer": [
+        r"C:\Windows\explorer.exe",
+    ],
+    "spotify": [
+        r"C:\Users\{user}\AppData\Roaming\Spotify\Spotify.exe",
+    ],
+    "slack": [
+        r"C:\Users\{user}\AppData\Local\slack\slack.exe",
+    ],
+    "discord": [
+        r"C:\Users\{user}\AppData\Local\Discord\app-1.0.9011\Discord.exe",
+    ],
+    "notion": [
+        r"C:\Users\{user}\AppData\Local\Programs\Notion\Notion.exe",
+    ],
+    "whatsnew": [
+        r"ms-settings:",
+    ],
+}
+
+
+def _expand_user_path(path_str: str) -> str:
+    """Replace {user} placeholder and expand ~ in paths."""
+    import getpass
+    username = getpass.getuser()
+    expanded = path_str.replace("{user}", username)
+    return str(Path(expanded).expanduser())
+
+
+def _resolve_exe_path(app_name: str, exe_path: str) -> str:
+    """
+    Fallback chain to resolve the actual executable path.
+    Returns the path if found, or None otherwise.
+    """
+    # Step 1: Try exact path provided
+    if exe_path:
+        expanded = _expand_user_path(exe_path)
+        if Path(expanded).exists():
+            return expanded
+        # If it's a protocol handler (e.g., ms-settings:), return as-is
+        if ":" in exe_path and not expanded.endswith(".exe"):
+            return exe_path
+
+    # Step 2: Look up known install locations
+    app_name_lower = app_name.lower()
+    if app_name_lower in KNOWN_APPS:
+        for candidate in KNOWN_APPS[app_name_lower]:
+            expanded = _expand_user_path(candidate)
+            if Path(expanded).exists():
+                return expanded
+
+    # Step 3: Try shortcuts or common variations
+    # For instance, try "app" if "app_name" doesn't match
+    app_variations = [
+        app_name.replace("_", " "),
+        app_name.replace("_", ""),
+    ]
+    for var in app_variations:
+        var_lower = var.lower()
+        if var_lower in KNOWN_APPS and var_lower != app_name_lower:
+            for candidate in KNOWN_APPS[var_lower]:
+                expanded = _expand_user_path(candidate)
+                if Path(expanded).exists():
+                    return expanded
+
+    return None
+
+
+def _open_file_or_parent(file_path: str) -> bool:
+    """
+    Try to open a file with default app, or parent folder if not found.
+    Returns True if successfully opened.
+    """
+    try:
+        p = Path(file_path)
+        
+        # File exists → open it
+        if p.exists():
+            os.startfile(str(p))
+            return True
+        
+        # Try parent folder
+        if p.parent.exists():
+            os.startfile(str(p.parent))
+            return True
+        
+        # Try grandparent
+        if p.parent.parent.exists():
+            os.startfile(str(p.parent.parent))
+            return True
+    except Exception as e:
+        logger.debug(f"Error opening {file_path}: {e}")
+    
+    return False
 
 
 def restore_workspace(apps: list) -> list:
     """
-    Placeholder. Replace this entire function in Step 2 with real
-    subprocess launch + fallback chain logic.
+    Launch saved apps with intelligent fallback chain.
 
     Args:
         apps: list of app dicts (from workspaces.json), pre-filtered
-              to only include apps where keep=True and is_system=False
+              to only include apps where keep=True
 
     Returns:
         list of result dicts: [{ app_name, status, launched: bool }, ...]
+        
+    Status values:
+        "success":     App launched successfully
+        "not_found":   Could not locate or launch app
+        "website":     Website opened in default browser
     """
-    raise NotImplementedError(
-        "restore.py not yet implemented. "
-        "app.py will return stub results until Step 2 is complete."
-    )
+    results = []
+
+    for app in apps:
+        app_name = app.get("app_name", "unknown")
+        exe_path = app.get("exe_path", "")
+        is_website = app.get("item_type") == "website" or exe_path.startswith("http")
+        window_title = app.get("window_title", "")
+        tabs = app.get("tabs", [])
+
+        result = {
+            "app_name": app_name,
+            "status": "unknown",
+            "launched": False,
+        }
+
+        try:
+            # Handle websites
+            if is_website:
+                url = exe_path if exe_path.startswith(("http", "www.")) else app.get("url", "")
+                if url and _open_url_default(url):
+                    result["status"] = "website"
+                    result["launched"] = True
+                else:
+                    logger.warning(f"Failed to open website {url}")
+                    result["status"] = "not_found"
+            # Handle applications
+            else:
+                exe = _resolve_exe_path(app_name, exe_path)
+                if exe:
+                    try:
+                        # Protocol handlers (e.g., ms-settings:) should use shell=True
+                        if exe.endswith(":") or not exe.endswith(".exe"):
+                            subprocess.Popen(exe, shell=True)
+                        else:
+                            subprocess.Popen(exe)
+                        result["status"] = "success"
+                        result["launched"] = True
+
+                        # If a saved app includes URL tabs, open those in the user's
+                        # default browser so restore is browser-agnostic.
+                        for tab in tabs:
+                            if isinstance(tab, str) and re.match(r"^(https?://|www\.)", tab.strip()):
+                                _open_url_default(tab)
+                    except Exception as e:
+                        logger.warning(f"Failed to launch {exe}: {e}")
+                        result["status"] = "not_found"
+                else:
+                    # Step 3: Try to extract file path from window title and open it
+                    if window_title:
+                        # Try to find file patterns in window title (e.g., "filename.txt - Notepad")
+                        # Extract common file extensions
+                        file_patterns = [
+                            r"([A-Za-z0-9_\-\.]+\.py)\s*(?:[-–]|—)",
+                            r"([A-Za-z0-9_\-\.]+\.js)\s*(?:[-–]|—)",
+                            r"([A-Za-z0-9_\-\.]+\.txt)\s*(?:[-–]|—)",
+                            r"([A-Za-z0-9_\-\.]+\.json)\s*(?:[-–]|—)",
+                        ]
+                        for pattern in file_patterns:
+                            match = re.search(pattern, window_title)
+                            if match:
+                                filename = match.group(1)
+                                if _open_file_or_parent(filename):
+                                    result["status"] = "success"
+                                    result["launched"] = True
+                                    break
+
+                    if not result["launched"]:
+                        result["status"] = "not_found"
+
+        except Exception as e:
+            logger.error(f"Unexpected error restoring {app_name}: {e}")
+            result["status"] = "not_found"
+
+        results.append(result)
+
+    return results

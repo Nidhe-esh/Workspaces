@@ -281,7 +281,7 @@ def main() -> None:
             width     = 820,
             height    = 628,
             resizable = True,
-            frameless = False,          # keep OS chrome (title bar, close btn)
+            frameless = False,
             min_size  = (820, 600),
         )
         webview.start(debug=False)

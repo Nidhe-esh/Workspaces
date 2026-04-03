@@ -19,7 +19,22 @@ async function api(method, path, body = null) {
   const opts = { method, headers: { "Content-Type": "application/json" } };
   if (body !== null) opts.body = JSON.stringify(body);
   const res = await fetch(path, opts);
-  return res.json();
+  const text = await res.text();
+  let payload = {};
+
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = { ok: false, error: text };
+    }
+  }
+
+  if (!res.ok && payload.ok !== false) {
+    payload = { ok: false, error: payload.error || `HTTP ${res.status}` };
+  }
+
+  return payload;
 }
 
 function slugify(str) {
@@ -68,6 +83,7 @@ function show(id) {
 function toggleTheme() {
   state.isDark = !state.isDark;
   document.getElementById("app").classList.toggle("dark", state.isDark);
+  document.body.style.background = state.isDark ? "#1a1a1a" : "#e0ddc8";
   const btn  = document.getElementById("themeBtn");
   const knob = document.getElementById("themeKnob");
   btn.classList.toggle("lit", !state.isDark);
@@ -226,6 +242,12 @@ function renderPendingManual() {
     const card = buildManualDisplayCard(item);
     list.appendChild(card);
   });
+  
+  // Show save button if items were added manually
+  if (state.pendingManual.length > 0) {
+    const saveZone = document.getElementById("save-zone");
+    if (saveZone) saveZone.style.display = "block";
+  }
 }
 
 function buildManualDisplayCard(item) {
@@ -516,10 +538,20 @@ function showConfirm() {
 async function runRestore() {
   if (!state.currentWS) return;
 
+  const apps = (state.currentWS.apps || []).filter(a => !a.is_system && a.keep !== false);
+  if (!apps.length) {
+    const done = document.getElementById("restore-done");
+    document.getElementById("restore-btns").style.display = "none";
+    document.getElementById("restore-prog").style.display = "none";
+    done.style.display = "block";
+    done.style.color = "var(--red)";
+    done.textContent = "✗ no enabled apps to restore";
+    return;
+  }
+
   document.getElementById("restore-btns").style.display = "none";
   document.getElementById("restore-prog").style.display = "block";
 
-  const apps = (state.currentWS.apps || []).filter(a => !a.is_system && a.keep !== false);
   const bar  = document.getElementById("prog-bar");
   const lbl  = document.getElementById("prog-lbl");
 
@@ -532,10 +564,23 @@ async function runRestore() {
     else               lbl.textContent = "finalizing…";
   }, 220);
 
-  const res = await api("POST", `/api/restore/${encodeURIComponent(state.currentWS.name)}`);
+  let res;
+  try {
+    res = await api("POST", `/api/restore/${encodeURIComponent(state.currentWS.name)}`);
+  } catch (err) {
+    clearInterval(tick);
+    bar.style.width = "100%";
+    lbl.textContent = "failed";
+    const done = document.getElementById("restore-done");
+    done.style.display = "block";
+    done.style.color = "var(--red)";
+    done.textContent = `✗ ${err?.message || err}`;
+    return;
+  }
+
   clearInterval(tick);
   bar.style.width = "100%";
-  lbl.textContent = "done!";
+  lbl.textContent = res.ok ? "done!" : "failed";
 
   setTimeout(() => {
     document.getElementById("restore-prog").style.display = "none";
@@ -544,6 +589,9 @@ async function runRestore() {
     if (!res.ok) {
       done.style.color   = "var(--red)";
       done.textContent   = `✗ ${res.error}`;
+    } else {
+      done.style.color   = "var(--green)";
+      done.textContent   = `✓ workspace restored!`;
     }
   }, 350);
 }

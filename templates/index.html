@@ -31,19 +31,23 @@
   --shadow:3px 3px 0 var(--black);
 }
 html,body{
-  width:100%;min-height:100vh;
-  display:flex;justify-content:center;align-items:flex-start;
+  width:100%;height:100%;margin:0;
+  display:block;
   background:#e0ddc8;
   font-family:var(--font);
-  padding:28px 16px;
+  padding:0;
+  overflow:hidden;
 }
 
 /* ── Frame ── */
 .frame{
   background:var(--white);
-  border:3px solid var(--black);
-  width:820px;max-width:100%;
-  box-shadow:8px 8px 0 var(--black);
+  border:0;
+  width:100%;height:100%;max-width:none;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  box-shadow:none;
   transition:background .2s,border-color .2s;
 }
 
@@ -62,7 +66,7 @@ html,body{
 .wname{flex:1;text-align:center;font-size:12px;color:#0a0a0a;letter-spacing:2px;font-weight:700}
 
 /* ── Layout ── */
-.layout{display:grid;grid-template-columns:200px 1fr;height:628px;overflow:hidden}
+.layout{display:grid;grid-template-columns:200px 1fr;flex:1;min-height:0;overflow:hidden}
 
 /* ── Sidebar ── */
 .sidebar{
@@ -129,13 +133,23 @@ html,body{
   overflow-y:auto;
   display:flex;flex-direction:column;
   transition:background .2s;
+  width:100%;
+  min-height:0;
+}
+.dark .main{
+  background:#1a1a1a;
 }
 
 /* ── Screens ── */
-.screen{display:none;flex-direction:column;padding:22px 24px 0;flex:1;min-height:0}
+.screen{display:none;flex-direction:column;padding:22px 24px 0;flex:1;min-height:0;background:inherit}
 .screen.active{display:flex}
 .screen-title{font-size:21px;color:var(--black);font-weight:900;letter-spacing:-.3px;margin-bottom:2px}
-.screen-sub{font-size:11px;color:var(--black);opacity:.4;margin-bottom:18px;font-weight:400;letter-spacing:.2px}
+.screen-sub{font-size:11px;color:var(--black);opacity:.4;margin-bottom:18px;font-weight:400;letter-spacing:.2px}.dark .screen-title{color:#ffffff}
+.dark .screen-sub{color:#f0f0f0;opacity:.78}
+.dark .screen-title, .dark .screen-sub{color:#ffffff}.dark .screen-title{color:#ffffff}
+.dark .screen-sub{color:#ffffff;opacity:.5}
+.dark .screen-title{color:#ffffff}
+.dark .screen-sub{color:#ffffff}
 
 /* ── Buttons ── */
 .btn-y{
@@ -329,15 +343,28 @@ html,body{
 .dark .tagline .name:hover{color:#f5e642;border-bottom-color:#f5e642}
 
 /* Manual add panel */
-.add-panel{background:var(--black);border:2.5px solid var(--black);padding:14px 16px;margin-bottom:12px;box-shadow:var(--sh)}
-.add-panel-tabs{display:flex;gap:0;border-bottom:2px solid rgba(255,255,255,.12);margin-bottom:12px;padding-bottom:0}
-.add-panel-tab{padding:5px 14px;font-size:11px;font-weight:700;cursor:pointer;color:rgba(255,255,255,.4);border-bottom:2px solid transparent;margin-bottom:-2px;font-family:var(--font);transition:all .1s}
+.add-panel{background:var(--white);border:2.5px solid var(--black);padding:14px 16px;margin-bottom:12px;box-shadow:var(--sh);display:block}
+.add-panel.compact{padding:12px 14px;margin-bottom:10px}
+.add-panel.show{display:block}
+.add-panel-tabs{display:flex;gap:0;border-bottom:2px solid rgba(0,0,0,.12);margin-bottom:12px;padding-bottom:0}
+.add-panel-tab{padding:5px 14px;font-size:11px;font-weight:700;cursor:pointer;color:rgba(0,0,0,.72);border-bottom:2px solid transparent;margin-bottom:-2px;font-family:var(--font);transition:all .1s}
 .add-panel-tab.on{color:#f5e642;border-bottom-color:#f5e642}
 .add-panel-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
-.add-input{background:rgba(255,255,255,.07);border:2px solid rgba(255,255,255,.18);padding:8px 12px;font-size:12px;color:#fff;font-family:var(--font);flex:1;outline:none;transition:border .1s;border-radius:0}
+.add-input{background:rgba(0,0,0,.04);border:2px solid rgba(0,0,0,.18);padding:8px 12px;font-size:12px;color:var(--black);font-family:var(--font);flex:1;outline:none;transition:border .1s;border-radius:0}
 .add-input:focus{border-color:#f5e642}
-.add-input::placeholder{color:rgba(255,255,255,.3)}
+.add-input::placeholder{color:rgba(0,0,0,.45)}
 .add-panel-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.add-panel-actions.compact{margin-top:10px}
+.add-hint{font-size:8.5px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(0,0,0,.35);font-weight:700;margin-bottom:10px}
+.btn-o.add-cancel{font-size:11px;padding:6px 12px}
+
+.dark .add-panel,#app.dark .add-panel{background:#121212 !important;border-color:#f0f0e8;box-shadow:3px 3px 0 #f0f0e8}
+.dark .add-panel-tabs{border-bottom:2px solid rgba(255,255,255,.12)}
+.dark .add-panel-tab{color:rgba(255,255,255,.85)}
+.dark .add-input{background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.22);color:#fff}
+.dark .add-input::placeholder{color:rgba(255,255,255,.72)}
+.dark .add-hint{color:rgba(255,255,255,.68)}
+.dark .btn-o.add-cancel{color:#fff;border-color:rgba(255,255,255,.35)}
 .added-pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .added-pill{background:#f5e642;border:2px solid #0a0a0a;padding:3px 10px 3px 10px;font-size:10px;color:#0a0a0a;font-weight:700;display:flex;align-items:center;gap:6px}
 .added-pill button{background:none;border:none;cursor:pointer;font-size:11px;color:#0a0a0a;font-weight:900;padding:0;line-height:1;font-family:var(--font)}
@@ -400,7 +427,7 @@ html,body{
         <!-- Manual add panel -->
         <div id="add-panel-new" style="display:none">
           <div class="add-panel">
-            <div style="font-size:8.5px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.35);font-weight:700;margin-bottom:10px">→ Add app or site manually</div>
+            <div class="add-hint">→ Add app or site manually</div>
             <div class="add-panel-tabs">
               <div class="add-panel-tab on" id="ntab-app" onclick="switchTab('new','app')">Application</div>
               <div class="add-panel-tab" id="ntab-site" onclick="switchTab('new','site')">Website / URL</div>
@@ -418,7 +445,7 @@ html,body{
               </div>
             </div>
             <div class="add-panel-actions">
-              <button class="btn-o" style="color:#fff;border-color:rgba(255,255,255,.25);font-size:11px;padding:6px 12px" onclick="toggleAddPanel('new')">[ CANCEL ]</button>
+              <button class="btn-o add-cancel" onclick="toggleAddPanel('new')">[ CANCEL ]</button>
               <button class="btn-g" style="font-size:11px;padding:6px 12px" onclick="addManualNew()">[ + ADD ]</button>
             </div>
             <div class="added-pills" id="n-added-pills"></div>
@@ -466,8 +493,8 @@ html,body{
 
         <!-- Manual add panel inside edit mode -->
         <div id="add-panel-edit" style="display:none">
-          <div class="add-panel" style="padding:12px 14px;margin-bottom:10px">
-            <div style="font-size:8.5px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.35);font-weight:700;margin-bottom:10px">→ Add to this workspace</div>
+          <div class="add-panel compact">
+            <div class="add-hint">→ Add to this workspace</div>
             <div class="add-panel-tabs">
               <div class="add-panel-tab on" id="etab-app" onclick="switchTab('edit','app')">Application</div>
               <div class="add-panel-tab" id="etab-site" onclick="switchTab('edit','site')">Website / URL</div>
@@ -484,8 +511,8 @@ html,body{
                 <input class="add-input" id="e-site-label" placeholder="Label  (optional)" style="flex:.9">
               </div>
             </div>
-            <div class="add-panel-actions" style="margin-top:10px">
-              <button class="btn-o" style="color:#fff;border-color:rgba(255,255,255,.25);font-size:11px;padding:5px 11px" onclick="toggleAddPanel('edit')">[ CANCEL ]</button>
+            <div class="add-panel-actions compact">
+              <button class="btn-o add-cancel" style="padding:5px 11px" onclick="toggleAddPanel('edit')">[ CANCEL ]</button>
               <button class="btn-g" style="font-size:11px;padding:5px 11px" onclick="addManualEdit()">[ + ADD ]</button>
             </div>
           </div>
@@ -551,26 +578,5 @@ html,body{
 </div><!-- /frame -->
 
 <script src="/static/app.js"></script>
-<script>
-  // Extra helpers used only in the HTML (settings clear-all)
-  async function clearAll() {
-    const res = await api('GET', '/api/workspaces');
-    if (!res.ok) return;
-    for (const ws of (res.data || [])) {
-      await api('DELETE', '/api/workspace/' + encodeURIComponent(ws.name));
-    }
-    state.savedWorkspaces = [];
-    show('saved');
-  }
-
-  // Set the restore screen title dynamically
-  const _origShowConfirm = showConfirm;
-  function showConfirm() {
-    if (state.currentWS) {
-      document.getElementById('restore-ws-title').textContent = 'RESTORE: "' + state.currentWS.name + '"?';
-    }
-    _origShowConfirm();
-  }
-</script>
 </body>
 </html>
