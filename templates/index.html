@@ -78,14 +78,8 @@ html,body{
   transition:background .2s;
 }
 .brand{
-  display:flex;align-items:center;gap:10px;
+  display:flex;flex-direction:column;align-items:flex-start;
   padding:14px 14px 6px;
-}
-.brand-mark{
-  width:38px;height:38px;flex-shrink:0;
-  border:2px solid var(--white);
-  box-shadow:3px 3px 0 rgba(0,0,0,.32);
-  background:#f5e642;
 }
 .brand-copy{display:flex;flex-direction:column;min-width:0}
 .brand-name{font-size:15px;font-weight:900;letter-spacing:.2px;color:var(--white);line-height:1}
@@ -440,7 +434,6 @@ html,body{
     <!-- ── Sidebar ── -->
     <div class="sidebar">
       <div class="brand">
-        <img class="brand-mark" src="/brand-mark" alt="Workspaces logo">
         <div class="brand-copy">
           <div class="brand-name">Workspaces</div>
           <div class="brand-tag">Capture and restore sessions</div>
