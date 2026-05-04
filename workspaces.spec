@@ -13,6 +13,11 @@ from pathlib import Path
 
 # Get the directory (current working directory when spec runs)
 spec_dir = Path.cwd()
+brand_assets = [
+    spec_dir / "Workspaces.logo",
+    spec_dir / "favicon.ico",
+]
+icon_path = next((path for path in (spec_dir / "favicon.ico",) if path.is_file()), None)
 
 block_cipher = None
 
@@ -23,7 +28,7 @@ a = Analysis(
     datas=[
         (str(spec_dir / "templates"), "templates"),
         (str(spec_dir / "static"), "static"),
-        (str(spec_dir / "workspaces.json"), "."),
+        *[(str(path), path.name) for path in brand_assets if path.is_file()],
     ],
     hiddenimports=[
         "flask",
@@ -61,6 +66,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # Optional: add icon path later
+    icon=str(icon_path) if icon_path is not None else None,
 )
 

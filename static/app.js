@@ -12,7 +12,70 @@ const state = {
   savedWorkspaces:  [],
   currentWS:        null,
   pendingManual:    [],   // items staged in the manual-add panel (new workspace flow)
+  settings:         {
+    auto_detect_browser_tabs: true,
+    show_system_apps: true,
+    auto_save_on_toggle: true,
+    dark_mode: false,
+  },
 };
+
+async function fetchSettings() {
+  const res = await api("GET", "/api/settings");
+  if (!res.ok || !res.data) return { ...state.settings };
+  return {
+    auto_detect_browser_tabs: res.data.auto_detect_browser_tabs !== false,
+    show_system_apps: res.data.show_system_apps !== false,
+    auto_save_on_toggle: res.data.auto_save_on_toggle !== false,
+    dark_mode: res.data.dark_mode === true,
+  };
+}
+
+async function persistSettings(partial = null) {
+  if (partial && typeof partial === "object") {
+    state.settings = { ...state.settings, ...partial };
+  }
+  const res = await api("POST", "/api/settings", { settings: state.settings });
+  if (res.ok && res.data) {
+    state.settings = {
+      auto_detect_browser_tabs: res.data.auto_detect_browser_tabs !== false,
+      show_system_apps: res.data.show_system_apps !== false,
+      auto_save_on_toggle: res.data.auto_save_on_toggle !== false,
+      dark_mode: res.data.dark_mode === true,
+    };
+  }
+}
+
+function setToggleState(el, isOn) {
+  if (!el) return;
+  el.classList.toggle("on", isOn);
+  const knob = el.querySelector(".tgl-k");
+  if (knob) knob.style.left = isOn ? "18px" : "2px";
+}
+
+async function handleSettingToggle(key, el) {
+  if (!el || !(key in state.settings)) return;
+  const next = !el.classList.contains("on");
+  state.settings[key] = next;
+  setToggleState(el, next);
+  await persistSettings();
+
+  // Apply settings immediately when the relevant screen is visible.
+  if ((key === "show_system_apps" || key === "auto_detect_browser_tabs") && document.getElementById("s-new").classList.contains("active")) {
+    renderScannedList();
+  }
+  if ((key === "show_system_apps" || key === "auto_detect_browser_tabs") && document.getElementById("s-edit").classList.contains("active") && state.currentWS) {
+    openEdit(state.currentWS.name);
+  }
+}
+
+async function initSettingsUI() {
+  state.settings = await fetchSettings();
+  setToggleState(document.getElementById("set-auto-tabs"), state.settings.auto_detect_browser_tabs);
+  setToggleState(document.getElementById("set-show-system"), state.settings.show_system_apps);
+  setToggleState(document.getElementById("set-auto-save"), state.settings.auto_save_on_toggle);
+  applyThemeState(state.settings.dark_mode === true);
+}
 
 // ── API helper ────────────────────────────────────────────────────────────────
 async function api(method, path, body = null) {
@@ -80,9 +143,10 @@ function show(id) {
 }
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
-function toggleTheme() {
-  state.isDark = !state.isDark;
+function applyThemeState(isDark) {
+  state.isDark = !!isDark;
   document.getElementById("app").classList.toggle("dark", state.isDark);
+  document.body.classList.toggle("dark", state.isDark);
   document.body.style.background = state.isDark ? "#1a1a1a" : "#e0ddc8";
   const btn  = document.getElementById("themeBtn");
   const knob = document.getElementById("themeKnob");
@@ -90,10 +154,47 @@ function toggleTheme() {
   knob.textContent = state.isDark ? "◑" : "☀";
 }
 
+async function toggleTheme() {
+  const next = !state.isDark;
+  applyThemeState(next);
+  state.settings.dark_mode = next;
+  await persistSettings();
+}
+
 // ── Toggle ────────────────────────────────────────────────────────────────────
 function tgl(el) {
-  el.classList.toggle("on");
-  el.querySelector(".tgl-k").style.left = el.classList.contains("on") ? "18px" : "2px";
+  const next = !el.classList.contains("on");
+  setToggleState(el, next);
+}
+
+function renderScannedList() {
+  const msg  = document.getElementById("scan-msg");
+  const list = document.getElementById("app-list");
+  const showSystem = state.settings.show_system_apps;
+
+  list.innerHTML = "";
+
+  const user = state.scannedApps.filter(a => !a.is_system);
+  const sys = state.scannedApps.filter(a => a.is_system);
+
+  if (showSystem) {
+    msg.innerHTML = `<span style="color:var(--green)">✓ ${user.length} apps · ${sys.length} system excluded</span>`;
+  } else {
+    msg.innerHTML = `<span style="color:var(--green)">✓ ${user.length} apps scanned</span>`;
+  }
+
+  user.forEach((a, i) => list.appendChild(buildScanCard(a, i, false)));
+
+  if (showSystem && sys.length) {
+    const div = document.createElement("div");
+    div.className = "sys-div";
+    div.textContent = `// ${sys.length} system app${sys.length !== 1 ? "s" : ""} detected, excluded`;
+    list.appendChild(div);
+    sys.forEach((a, i) => list.appendChild(buildScanCard(a, user.length + i, true)));
+  }
+
+  // Keep manually-added items below scanned cards.
+  renderPendingManual();
 }
 
 // ── SCAN ──────────────────────────────────────────────────────────────────────
@@ -113,23 +214,7 @@ async function doScan() {
   }
 
   state.scannedApps = res.data.apps || [];
-  const user = state.scannedApps.filter(a => !a.is_system);
-  const sys  = state.scannedApps.filter(a =>  a.is_system);
-
-  msg.innerHTML = `<span style="color:var(--green)">✓ ${user.length} apps · ${sys.length} system excluded</span>`;
-
-  user.forEach((a, i) => list.appendChild(buildScanCard(a, i, false)));
-
-  if (sys.length) {
-    const div = document.createElement("div");
-    div.className = "sys-div";
-    div.textContent = `// ${sys.length} system app${sys.length !== 1 ? "s" : ""} detected, excluded`;
-    list.appendChild(div);
-    sys.forEach((a, i) => list.appendChild(buildScanCard(a, user.length + i, true)));
-  }
-
-  // Render any pending manual items below scanned ones
-  renderPendingManual();
+  renderScannedList();
   saveZone.style.display = "block";
 }
 
@@ -137,9 +222,10 @@ function buildScanCard(app, idx, isSystem) {
   const card = document.createElement("div");
   card.className = "app-card" + (isSystem ? " sys" : "");
 
-  const isBrowser = ["chrome", "firefox", "edge"].some(b => app.app_name.includes(b));
-  const tabs = (app.tabs || []).slice(0, 5);
-  const more = (app.tabs || []).length - 5;
+  const isBrowser = ["chrome", "chromium", "firefox", "edge", "brave", "opera", "vivaldi", "thorium", "waterfox", "librewolf", "arc", "zen"].some(b => app.app_name.includes(b));
+  const tabsSource = state.settings.auto_detect_browser_tabs ? (app.tabs || []) : [];
+  const tabs = tabsSource.slice(0, 5);
+  const more = tabsSource.length - 5;
 
   const tabsHTML = tabs.length
     ? `<div class="tab-row">
@@ -306,6 +392,48 @@ async function saveWS() {
   setTimeout(() => (ok.style.display = "none"), 3500);
 }
 
+function buildDraftWorkspacePayload() {
+  if (state.currentWS) {
+    const name = document.getElementById("edit-ws-name").value.trim() || state.currentWS.name;
+    return {
+      name,
+      apps: Array.isArray(state.currentWS.apps) ? state.currentWS.apps : [],
+    };
+  }
+
+  const apps = [
+    ...state.scannedApps.filter(a => !a.is_system),
+    ...state.pendingManual,
+  ];
+  if (!apps.length) return null;
+
+  const rawName = document.getElementById("ws-name-input").value.trim();
+  const name = slugify(rawName) || "untitled_workspace";
+  return { name, apps };
+}
+
+function persistDraftWorkspaceOnExit() {
+  const payload = buildDraftWorkspacePayload();
+  if (!payload) return;
+
+  try {
+    if (navigator.sendBeacon) {
+      const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+      navigator.sendBeacon("/api/save", blob);
+      return;
+    }
+  } catch {
+    // Fall through to the fetch keepalive path below.
+  }
+
+  fetch("/api/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    keepalive: true,
+  }).catch(() => {});
+}
+
 // ── SAVED WORKSPACES ──────────────────────────────────────────────────────────
 async function loadSavedWorkspaces() {
   const grid = document.getElementById("ws-grid");
@@ -364,7 +492,7 @@ function openEdit(name) {
 
   userApps.forEach((app, i) => container.appendChild(buildEditCard(app, i)));
 
-  if (sysApps.length) {
+  if (state.settings.show_system_apps && sysApps.length) {
     const div = document.createElement("div");
     div.className = "sys-div";
     div.textContent = "// system apps — detected, excluded";
@@ -390,8 +518,9 @@ function buildEditCard(app, idx) {
   card.className = "app-card" + (isManual ? (app.item_type === "website" ? " manual-website" : " manual-app") : "");
 
   const isBrowser = ["chrome", "firefox", "edge"].some(b => app.app_name.includes(b));
-  const tabs = (app.tabs || []).slice(0, 5);
-  const more = (app.tabs || []).length - 5;
+  const tabsSource = state.settings.auto_detect_browser_tabs ? (app.tabs || []) : [];
+  const tabs = tabsSource.slice(0, 5);
+  const more = tabsSource.length - 5;
 
   const tabsHTML = tabs.length
     ? `<div class="tab-row">
@@ -411,12 +540,7 @@ function buildEditCard(app, idx) {
 
   const tglHTML = `
     <div class="tgl${isOn ? " on" : ""}" ${tglLock}
-         onclick="${idx >= 0
-           ? `state.currentWS.apps[${idx}].keep=!state.currentWS.apps[${idx}].keep;`
-           : ""}
-                  this.classList.toggle('on');
-                  this.querySelector('.tgl-k').style.left=this.classList.contains('on')?'18px':'2px';
-                  ${idx >= 0 ? "autoSaveEdit()" : ""}">
+         onclick="${idx >= 0 ? `toggleEditKeep(${idx}, this)` : ""}">
       <div class="tgl-k" style="left:${isOn ? "18" : "2"}px"></div>
     </div>`;
 
@@ -433,6 +557,13 @@ function buildEditCard(app, idx) {
     ${tabsHTML}`;
 
   return card;
+}
+
+function toggleEditKeep(idx, el) {
+  if (!state.currentWS || !state.currentWS.apps || !state.currentWS.apps[idx]) return;
+  state.currentWS.apps[idx].keep = !state.currentWS.apps[idx].keep;
+  setToggleState(el, !!state.currentWS.apps[idx].keep);
+  if (state.settings.auto_save_on_toggle) autoSaveEdit();
 }
 
 // Manual add inside Edit mode -- calls API immediately
@@ -490,7 +621,12 @@ async function autoSaveEdit() {
 
 async function deleteWS() {
   if (!state.currentWS) return;
-  if (!confirm(`Delete "${state.currentWS.name}"? This cannot be undone.`)) return;
+  const ok = await showAppConfirm({
+    title: "DELETE_WORKSPACE",
+    message: `Delete "${state.currentWS.name}"? This cannot be undone.`,
+    okLabel: "[ DELETE ]",
+  });
+  if (!ok) return;
   const res = await api("DELETE", `/api/workspace/${encodeURIComponent(state.currentWS.name)}`);
   if (res.ok) { state.currentWS = null; show("saved"); }
   else alert(`Delete failed: ${res.error}`);
@@ -598,11 +734,74 @@ async function runRestore() {
 
 // ── Settings clear-all ────────────────────────────────────────────────────────
 async function clearAll() {
-  const res = await api("GET", "/api/workspaces");
-  if (!res.ok) return;
-  for (const ws of (res.data || [])) {
-    await api("DELETE", `/api/workspace/${encodeURIComponent(ws.name)}`);
+  const res = await api("DELETE", "/api/workspaces");
+  if (!res.ok) {
+    alert(`Clear failed: ${res.error || "unknown error"}`);
+    return;
   }
   state.savedWorkspaces = [];
   show("saved");
+}
+
+async function clearAllConfirm() {
+  const ok = await showAppConfirm({
+    title: "CLEAR_ALL_WORKSPACES",
+    message: "Delete ALL workspaces? This cannot be undone.",
+    okLabel: "[ CLEAR ALL ]",
+  });
+  if (!ok) return;
+  await clearAll();
+}
+
+async function openStorageLocation() {
+  const res = await api("POST", "/api/storage-location/open");
+  if (!res.ok) {
+    alert(`Open folder failed: ${res.error || "unknown error"}`);
+  }
+}
+
+initSettingsUI();
+window.addEventListener("beforeunload", persistDraftWorkspaceOnExit);
+
+function showAppConfirm({ title = "CONFIRM", message = "Are you sure?", okLabel = "[ OK ]" } = {}) {
+  const modal = document.getElementById("confirm-modal");
+  const titleEl = document.getElementById("confirm-title");
+  const textEl = document.getElementById("confirm-text");
+  const okBtn = document.getElementById("confirm-ok");
+  const cancelBtn = document.getElementById("confirm-cancel");
+
+  // Fallback for missing modal markup.
+  if (!modal || !titleEl || !textEl || !okBtn || !cancelBtn) {
+    return Promise.resolve(confirm(message));
+  }
+
+  titleEl.textContent = title;
+  textEl.textContent = message;
+  okBtn.textContent = okLabel;
+
+  return new Promise(resolve => {
+    const close = val => {
+      modal.style.display = "none";
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      modal.removeEventListener("click", onBackdrop);
+      document.removeEventListener("keydown", onEsc);
+      resolve(val);
+    };
+
+    const onOk = () => close(true);
+    const onCancel = () => close(false);
+    const onBackdrop = e => {
+      if (e.target === modal) close(false);
+    };
+    const onEsc = e => {
+      if (e.key === "Escape") close(false);
+    };
+
+    modal.style.display = "flex";
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+    modal.addEventListener("click", onBackdrop);
+    document.addEventListener("keydown", onEsc);
+  });
 }

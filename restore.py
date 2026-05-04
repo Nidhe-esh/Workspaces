@@ -19,11 +19,27 @@ import logging
 import os
 import re
 import subprocess
+import urllib.parse
 import webbrowser
 from pathlib import Path
 
 # Setup logging
 logger = logging.getLogger(__name__)
+
+
+BROWSER_NAME_HINTS = (
+    "chrome",
+    "chromium",
+    "edge",
+    "brave",
+    "opera",
+    "vivaldi",
+    "thorium",
+    "arc",
+    "firefox",
+    "waterfox",
+    "librewolf",
+)
 
 
 def _normalize_url(url: str) -> str:
@@ -54,6 +70,92 @@ def _open_url_default(url: str) -> bool:
             return webbrowser.open(target)
         except Exception:
             return False
+
+
+def _is_browser_item(app: dict) -> bool:
+    app_name = (app.get("app_name") or "").lower()
+    exe_path = (app.get("exe_path") or "").lower()
+    return any(hint in app_name or hint in exe_path for hint in BROWSER_NAME_HINTS)
+
+
+def _browser_urls(tabs: list) -> list[str]:
+    urls = []
+    seen = set()
+    for tab in tabs or []:
+        if not isinstance(tab, str):
+            continue
+        value = tab.strip()
+        if not value:
+            continue
+        if not re.match(r"^(https?://|file:|about:|chrome://|edge://|moz-extension://|ftp://|www\.)", value, re.IGNORECASE):
+            continue
+        normalized = _normalize_url(value)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        urls.append(normalized)
+    return urls
+
+
+def _tab_title_fallback_urls(tabs: list) -> list[str]:
+    """Convert non-URL tab labels into searchable URLs for restore fallback."""
+    urls = []
+    seen = set()
+
+    for tab in tabs or []:
+        if not isinstance(tab, str):
+            continue
+
+        label = tab.strip()
+        if not label:
+            continue
+
+        # Skip labels that are already handled as explicit URLs.
+        if re.match(r"^(https?://|file:|about:|chrome://|edge://|moz-extension://|ftp://|www\.)", label, re.IGNORECASE):
+            continue
+
+        # Domain-like labels from title parsing (e.g. "github.com").
+        compact = label.lower().replace(" ", "")
+        if re.match(r"^[a-z0-9.-]+\.[a-z]{2,}(/.*)?$", compact):
+            candidate = _normalize_url(compact)
+        else:
+            # Graceful fallback: open search results for plain tab titles.
+            candidate = f"https://www.google.com/search?q={urllib.parse.quote_plus(label)}"
+
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            urls.append(candidate)
+
+    return urls
+
+
+def _launch_browser_tabs(app: dict, tabs: list) -> bool:
+    urls = _browser_urls(tabs)
+    if not urls:
+        urls = _tab_title_fallback_urls(tabs)
+    if not urls:
+        return False
+
+    exe_path = (app.get("exe_path") or "").strip()
+    browser_name = (app.get("app_name") or "").lower()
+    launch_args = None
+
+    if exe_path and Path(exe_path).exists():
+        if any(hint in browser_name or hint in exe_path.lower() for hint in ("firefox", "waterfox", "librewolf")):
+            launch_args = [exe_path, "-new-window", *urls]
+        else:
+            launch_args = [exe_path, "--new-window", *urls]
+
+    try:
+        if launch_args:
+            subprocess.Popen(launch_args)
+            return True
+        for url in urls:
+            _open_url_default(url)
+        return True
+    except Exception as e:
+        logger.warning("Failed to restore browser tabs for %s: %s", app.get("app_name", "unknown"), e)
+        return False
 
 # Known application installation paths (fallback dict)
 KNOWN_APPS = {
@@ -238,11 +340,8 @@ def restore_workspace(apps: list) -> list:
                         result["status"] = "success"
                         result["launched"] = True
 
-                        # If a saved app includes URL tabs, open those in the user's
-                        # default browser so restore is browser-agnostic.
-                        for tab in tabs:
-                            if isinstance(tab, str) and re.match(r"^(https?://|www\.)", tab.strip()):
-                                _open_url_default(tab)
+                        if _is_browser_item(app) and tabs:
+                            _launch_browser_tabs(app, tabs)
                     except Exception as e:
                         logger.warning(f"Failed to launch {exe}: {e}")
                         result["status"] = "not_found"

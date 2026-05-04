@@ -8,12 +8,16 @@ Run:  python app.py           (native window, no OS chrome)
 
 import datetime
 import json
+import logging
+import os
+import re
 import sys
 import threading
 import time
+from html import escape
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request, send_file
 
 # -- pywebview ----------------------------------------------------------------
 try:
@@ -21,6 +25,28 @@ try:
     HAS_WEBVIEW = True
 except ImportError:
     HAS_WEBVIEW = False
+
+
+# -- Runtime flags -------------------------------------------------------------
+
+ALLOW_MOCK_FALLBACK = os.getenv("WORKSPACES_ALLOW_MOCK_FALLBACK", "0") == "1"
+MAX_WORKSPACES = 500
+MAX_APPS_PER_WORKSPACE = 500
+MAX_STR_LEN = 2048
+MAX_NAME_LEN = 120
+NAME_RX = re.compile(r"^[\w .\-]{1,120}$")
+DATA_LOCK = threading.Lock()
+APP_DIR = Path(__file__).resolve().parent
+BRAND_ASSET_NAMES = ("Workspaces.logo", "favicon.ico")
+
+
+# -- Logging -------------------------------------------------------------------
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("workspaces")
 
 
 # -- Mock data ----------------------------------------------------------------
@@ -90,9 +116,14 @@ try:
         try:
             return _scan()
         except Exception:
-            return _mock_scan()
+            logger.exception("scan_workspace failed")
+            if ALLOW_MOCK_FALLBACK:
+                return _mock_scan()
+            raise
 except ImportError:
     def scan_workspace():
+        if not ALLOW_MOCK_FALLBACK:
+            raise RuntimeError("scanner module unavailable")
         return _mock_scan()
 
 try:
@@ -101,36 +132,278 @@ try:
         try:
             return _restore(apps)
         except Exception:
-            return _mock_restore(apps)
+            logger.exception("restore_workspace failed")
+            if ALLOW_MOCK_FALLBACK:
+                return _mock_restore(apps)
+            raise
 except ImportError:
     def restore_workspace(apps):
+        if not ALLOW_MOCK_FALLBACK:
+            raise RuntimeError("restore module unavailable")
         return _mock_restore(apps)
 
 
 # -- Storage ------------------------------------------------------------------
 
-DATA_FILE = Path(__file__).parent / "workspaces.json"
+APP_DATA_DIR = Path(os.getenv("APPDATA") or (Path.home() / "AppData" / "Roaming")) / "Workspaces"
+DATA_FILE = APP_DATA_DIR / "workspaces.json"
+DEFAULT_SETTINGS = {
+    "auto_detect_browser_tabs": True,
+    "show_system_apps": True,
+    "auto_save_on_toggle": True,
+    "dark_mode": False,
+}
+
+
+def _legacy_data_file() -> Path:
+    return Path(__file__).resolve().parent / "workspaces.json"
+
+
+def _safe_text(value, *, max_len=MAX_STR_LEN) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if len(text) > max_len:
+        text = text[:max_len]
+    return text
+
+
+def _safe_name(value: str) -> str:
+    name = _safe_text(value, max_len=MAX_NAME_LEN)
+    if not name:
+        raise ValueError("name is required")
+    if not NAME_RX.match(name):
+        raise ValueError("name contains invalid characters")
+    return name
+
+
+def _safe_bool(value, default=True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    return bool(value)
+
+
+def _validate_app_item(raw: dict) -> dict:
+    if not isinstance(raw, dict):
+        raise ValueError("invalid app item")
+
+    item_type = _safe_text(raw.get("item_type"), max_len=20).lower() or "app"
+    if item_type not in {"app", "website"}:
+        item_type = "app"
+
+    app_name = _safe_text(raw.get("app_name"), max_len=200)
+    window_title = _safe_text(raw.get("window_title"), max_len=300)
+    exe_path = _safe_text(raw.get("exe_path"), max_len=MAX_STR_LEN)
+    url = _safe_text(raw.get("url"), max_len=MAX_STR_LEN)
+
+    if item_type == "website":
+        if not url:
+            # Preserve compatibility with existing website entries that keep URL in exe_path.
+            url = exe_path
+        if not url:
+            raise ValueError("website url is required")
+        if not app_name:
+            app_name = url
+        if not window_title:
+            window_title = app_name
+        exe_path = url
+    else:
+        if not app_name:
+            raise ValueError("app_name is required")
+
+    tabs_raw = raw.get("tabs", [])
+    tabs = []
+    if isinstance(tabs_raw, list):
+        tabs = [_safe_text(t, max_len=MAX_STR_LEN) for t in tabs_raw if _safe_text(t, max_len=MAX_STR_LEN)]
+
+    return {
+        "app_name": app_name,
+        "window_title": window_title,
+        "exe_path": exe_path,
+        "is_system": _safe_bool(raw.get("is_system"), default=False),
+        "keep": _safe_bool(raw.get("keep"), default=True),
+        "tabs": tabs,
+        "item_type": item_type,
+        "url": url if item_type == "website" else "",
+    }
+
+
+def _validate_workspace_entry(raw: dict) -> dict:
+    if not isinstance(raw, dict):
+        raise ValueError("invalid workspace entry")
+
+    name = _safe_name(raw.get("name", ""))
+    saved_at = _safe_text(raw.get("saved_at"), max_len=40) or datetime.datetime.now().isoformat(timespec="seconds")
+
+    apps_raw = raw.get("apps", [])
+    if not isinstance(apps_raw, list):
+        raise ValueError("apps must be a list")
+
+    apps = []
+    for item in apps_raw[:MAX_APPS_PER_WORKSPACE]:
+        apps.append(_validate_app_item(item))
+
+    return {
+        "name": name,
+        "saved_at": saved_at,
+        "apps": apps,
+    }
+
+
+def _validate_settings(raw: dict) -> dict:
+    if not isinstance(raw, dict):
+        return dict(DEFAULT_SETTINGS)
+    settings = dict(DEFAULT_SETTINGS)
+    for k in DEFAULT_SETTINGS:
+        settings[k] = _safe_bool(raw.get(k), default=DEFAULT_SETTINGS[k])
+    return settings
 
 
 def load_data() -> dict:
-    if DATA_FILE.exists():
+    base = {"workspaces": [], "settings": dict(DEFAULT_SETTINGS)}
+    if not DATA_FILE.exists():
+        legacy_file = _legacy_data_file()
+        if legacy_file != DATA_FILE and legacy_file.exists():
+            try:
+                with open(legacy_file, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                if isinstance(raw, dict):
+                    workspaces = raw.get("workspaces", [])
+                    if isinstance(workspaces, list):
+                        cleaned = []
+                        for ws in workspaces[:MAX_WORKSPACES]:
+                            try:
+                                cleaned.append(_validate_workspace_entry(ws))
+                            except Exception:
+                                logger.warning("Dropping invalid legacy workspace entry")
+                        settings = _validate_settings(raw.get("settings", {}))
+                        data = {"workspaces": cleaned, "settings": settings}
+                        write_data(data)
+                        return data
+            except Exception:
+                logger.exception("Failed to migrate legacy data file: %s", legacy_file)
+        return base
+
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception:
+        logger.exception("Failed to read data file: %s", DATA_FILE)
+        return base
+
+    if not isinstance(raw, dict):
+        logger.warning("Invalid data file structure (root not object)")
+        return base
+
+    workspaces = raw.get("workspaces", [])
+    if not isinstance(workspaces, list):
+        logger.warning("Invalid data file structure (workspaces not list)")
+        return base
+
+    cleaned = []
+    for ws in workspaces[:MAX_WORKSPACES]:
         try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+            cleaned.append(_validate_workspace_entry(ws))
         except Exception:
-            pass
-    return {"workspaces": []}
+            logger.warning("Dropping invalid workspace entry")
+
+    settings = _validate_settings(raw.get("settings", {}))
+    return {"workspaces": cleaned, "settings": settings}
 
 
 def write_data(data: dict) -> None:
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
+    parent = DATA_FILE.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    tmp_file = parent / f"{DATA_FILE.name}.tmp"
+
+    with open(tmp_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
+
+    os.replace(tmp_file, DATA_FILE)
 
 
 # -- Flask --------------------------------------------------------------------
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
+
+
+def _api_error(message: str, status: int = 400):
+    return jsonify({"ok": False, "error": message}), status
+
+
+def _find_brand_asset(*, prefer_ico: bool = False) -> Path | None:
+    names = BRAND_ASSET_NAMES if not prefer_ico else ("favicon.ico", "Workspaces.logo")
+    for name in names:
+        candidate = APP_DIR / name
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _brand_svg() -> str:
+    title = escape("Workspaces")
+    return (
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256' role='img' aria-label='Workspaces'>"
+        "<rect width='256' height='256' rx='44' fill='#f5e642' stroke='#0a0a0a' stroke-width='14'/>"
+        "<rect x='38' y='38' width='180' height='180' rx='28' fill='none' stroke='#0a0a0a' stroke-width='8' stroke-dasharray='10 12' opacity='.45'/>"
+        "<path d='M64 86h128v20H64zM64 118h96v20H64zM64 150h128v20H64z' fill='#0a0a0a'/>"
+        f"<text x='128' y='214' text-anchor='middle' font-family='Arial, sans-serif' font-size='30' font-weight='700' fill='#0a0a0a'>{title}</text>"
+        "</svg>"
+    )
+
+
+def _brand_svg_response():
+    return Response(_brand_svg(), mimetype="image/svg+xml")
+
+
+@app.route("/brand-mark")
+@app.route("/brand-mark.svg")
+def brand_mark():
+    asset = _find_brand_asset()
+    if asset is not None:
+        mimetype = "image/svg+xml" if asset.name == "Workspaces.logo" else None
+        return send_file(asset, mimetype=mimetype)
+    return _brand_svg_response()
+
+
+@app.route("/favicon")
+@app.route("/favicon.svg")
+def favicon_svg():
+    asset = _find_brand_asset()
+    if asset is not None:
+        mimetype = "image/svg+xml" if asset.name == "Workspaces.logo" else "image/x-icon"
+        return send_file(asset, mimetype=mimetype)
+    return _brand_svg_response()
+
+
+@app.route("/favicon.ico")
+def favicon_ico():
+    asset = _find_brand_asset(prefer_ico=True)
+    if asset is not None:
+        mimetype = "image/x-icon"
+        if asset.name == "Workspaces.logo":
+            mimetype = "image/svg+xml"
+        return send_file(asset, mimetype=mimetype)
+    return _brand_svg_response()
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(err):
+    logger.exception("Unhandled server error")
+    if request.path.startswith("/api/"):
+        return jsonify({"ok": False, "error": "internal server error"}), 500
+    raise err
 
 
 @app.route("/")
@@ -147,31 +420,72 @@ def api_scan():
 # List workspaces
 @app.route("/api/workspaces", methods=["GET"])
 def api_list():
-    return jsonify({"ok": True, "data": load_data()["workspaces"]})
+    with DATA_LOCK:
+        data = load_data()
+    return jsonify({"ok": True, "data": data["workspaces"]})
+
+
+@app.route("/api/workspaces", methods=["DELETE"])
+def api_delete_all():
+    with DATA_LOCK:
+        current = load_data()
+        data = {"workspaces": [], "settings": current.get("settings", dict(DEFAULT_SETTINGS))}
+        write_data(data)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/settings", methods=["GET"])
+def api_get_settings():
+    with DATA_LOCK:
+        data = load_data()
+    return jsonify({"ok": True, "data": data.get("settings", dict(DEFAULT_SETTINGS))})
+
+
+@app.route("/api/settings", methods=["POST"])
+def api_set_settings():
+    body = request.get_json(silent=True) or {}
+    incoming = body.get("settings", body)
+    with DATA_LOCK:
+        data = load_data()
+        merged = dict(data.get("settings", dict(DEFAULT_SETTINGS)))
+        if isinstance(incoming, dict):
+            for k in DEFAULT_SETTINGS:
+                if k in incoming:
+                    merged[k] = _safe_bool(incoming.get(k), default=DEFAULT_SETTINGS[k])
+        data["settings"] = _validate_settings(merged)
+        write_data(data)
+    return jsonify({"ok": True, "data": data["settings"]})
 
 
 # Save workspace (full snapshot -- creates or overwrites by name)
 @app.route("/api/save", methods=["POST"])
 def api_save():
-    body = request.get_json(force=True, silent=True) or {}
-    name = (body.get("name") or "").strip()
-    apps = body.get("apps", [])
-    if not name:
-        return jsonify({"ok": False, "error": "name is required"}), 400
+    body = request.get_json(silent=True) or {}
+    try:
+        name = _safe_name(body.get("name", ""))
+        apps_raw = body.get("apps", [])
+        if not isinstance(apps_raw, list):
+            return _api_error("apps must be a list")
+        apps = [_validate_app_item(a) for a in apps_raw[:MAX_APPS_PER_WORKSPACE]]
+    except ValueError as exc:
+        return _api_error(str(exc))
 
-    data = load_data()
-    entry = {
-        "name": name,
-        "saved_at": datetime.datetime.now().isoformat(timespec="seconds"),
-        "apps": apps,
-    }
-    idx = next((i for i, w in enumerate(data["workspaces"]) if w["name"] == name), None)
-    if idx is not None:
-        data["workspaces"][idx] = entry
-    else:
-        data["workspaces"].append(entry)
+    with DATA_LOCK:
+        data = load_data()
+        entry = {
+            "name": name,
+            "saved_at": datetime.datetime.now().isoformat(timespec="seconds"),
+            "apps": apps,
+        }
+        idx = next((i for i, w in enumerate(data["workspaces"]) if w["name"] == name), None)
+        if idx is not None:
+            data["workspaces"][idx] = entry
+        else:
+            if len(data["workspaces"]) >= MAX_WORKSPACES:
+                return _api_error("workspace limit reached", 409)
+            data["workspaces"].append(entry)
+        write_data(data)
 
-    write_data(data)
     return jsonify({"ok": True, "entry": entry})
 
 
@@ -188,65 +502,69 @@ def api_add_item(n):
     }
     Appends the item to the named workspace and saves.
     """
-    data = load_data()
-    ws = next((w for w in data["workspaces"] if w["name"] == n), None)
-    if ws is None:
-        return jsonify({"ok": False, "error": "workspace not found"}), 404
-
-    body = request.get_json(force=True, silent=True) or {}
-    item_type = body.get("type", "app")
+    body = request.get_json(silent=True) or {}
+    item_type = _safe_text(body.get("type", "app"), max_len=20).lower() or "app"
 
     if item_type == "website":
-        url   = (body.get("url") or "").strip()
-        label = (body.get("label") or url).strip()
-        if not url:
-            return jsonify({"ok": False, "error": "url is required"}), 400
-        item = {
-            "app_name":     label or url,
-            "window_title": label,
-            "exe_path":     url,
-            "is_system":    False,
-            "keep":         True,
-            "tabs":         [],
-            "item_type":    "website",
-            "url":          url,
+        candidate = {
+            "item_type": "website",
+            "app_name": _safe_text(body.get("label") or body.get("url"), max_len=200),
+            "window_title": _safe_text(body.get("label") or body.get("url"), max_len=300),
+            "exe_path": _safe_text(body.get("url"), max_len=MAX_STR_LEN),
+            "url": _safe_text(body.get("url"), max_len=MAX_STR_LEN),
+            "is_system": False,
+            "keep": True,
+            "tabs": [],
         }
     else:
-        app_name = (body.get("app_name") or "").strip().replace(" ", "_").lower()
-        exe_path = (body.get("exe_path") or "").strip()
-        if not app_name:
-            return jsonify({"ok": False, "error": "app_name is required"}), 400
-        item = {
-            "app_name":     app_name,
+        app_name = _safe_text(body.get("app_name"), max_len=200).replace(" ", "_").lower()
+        candidate = {
+            "item_type": "app",
+            "app_name": app_name,
             "window_title": app_name,
-            "exe_path":     exe_path,
-            "is_system":    False,
-            "keep":         True,
-            "tabs":         [],
-            "item_type":    "app",
+            "exe_path": _safe_text(body.get("exe_path"), max_len=MAX_STR_LEN),
+            "is_system": False,
+            "keep": True,
+            "tabs": [],
         }
 
-    ws.setdefault("apps", []).append(item)
-    write_data(data)
+    try:
+        item = _validate_app_item(candidate)
+    except ValueError as exc:
+        return _api_error(str(exc))
+
+    with DATA_LOCK:
+        data = load_data()
+        ws = next((w for w in data["workspaces"] if w["name"] == n), None)
+        if ws is None:
+            return jsonify({"ok": False, "error": "workspace not found"}), 404
+        apps = ws.setdefault("apps", [])
+        if len(apps) >= MAX_APPS_PER_WORKSPACE:
+            return _api_error("app limit reached", 409)
+        apps.append(item)
+        write_data(data)
+
     return jsonify({"ok": True, "item": item})
 
 
 # Delete workspace
 @app.route("/api/workspace/<n>", methods=["DELETE"])
 def api_delete(n):
-    data = load_data()
-    before = len(data["workspaces"])
-    data["workspaces"] = [w for w in data["workspaces"] if w["name"] != n]
-    if len(data["workspaces"]) == before:
-        return jsonify({"ok": False, "error": "not found"}), 404
-    write_data(data)
+    with DATA_LOCK:
+        data = load_data()
+        before = len(data["workspaces"])
+        data["workspaces"] = [w for w in data["workspaces"] if w["name"] != n]
+        if len(data["workspaces"]) == before:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        write_data(data)
     return jsonify({"ok": True})
 
 
 # Restore workspace
 @app.route("/api/restore/<n>", methods=["POST"])
 def api_restore(n):
-    data = load_data()
+    with DATA_LOCK:
+        data = load_data()
     ws = next((w for w in data["workspaces"] if w["name"] == n), None)
     if ws is None:
         return jsonify({"ok": False, "error": "not found"}), 404
@@ -260,6 +578,25 @@ def api_ping():
     return jsonify({"ok": True})
 
 
+@app.route("/api/storage-location", methods=["GET"])
+def api_storage_location():
+    return jsonify({"ok": True, "path": str(DATA_FILE.resolve())})
+
+
+@app.route("/api/storage-location/open", methods=["POST"])
+def api_open_storage_location():
+    try:
+        folder = APP_DATA_DIR.resolve()
+        if hasattr(os, "startfile"):
+            os.startfile(str(folder))
+        else:
+            return _api_error("open folder is only supported on Windows", 400)
+        return jsonify({"ok": True, "path": str(folder)})
+    except Exception as e:
+        logger.exception("Failed to open storage location")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 # -- Launcher -----------------------------------------------------------------
 
 def _run_flask(port: int) -> None:
@@ -269,6 +606,9 @@ def _run_flask(port: int) -> None:
 def main() -> None:
     port     = 5050
     dev_mode = "--dev" in sys.argv
+
+    if dev_mode and not ALLOW_MOCK_FALLBACK:
+        logger.info("Dev mode enabled; mock fallback can be enabled with WORKSPACES_ALLOW_MOCK_FALLBACK=1")
 
     if HAS_WEBVIEW and not dev_mode:
         t = threading.Thread(target=_run_flask, args=(port,), daemon=True)
