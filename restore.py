@@ -137,21 +137,26 @@ def _launch_browser_tabs(app: dict, tabs: list) -> bool:
         return False
 
     exe_path = (app.get("exe_path") or "").strip()
-    browser_name = (app.get("app_name") or "").lower()
     launch_args = None
 
     if exe_path and Path(exe_path).exists():
-        if any(hint in browser_name or hint in exe_path.lower() for hint in ("firefox", "waterfox", "librewolf")):
-            launch_args = [exe_path, "-new-window", *urls]
-        else:
-            launch_args = [exe_path, "--new-window", *urls]
+        # Launch once with all URLs to avoid creating a separate blank browser window.
+        launch_args = [exe_path, *urls]
 
     try:
         if launch_args:
             subprocess.Popen(launch_args)
             return True
-        for url in urls:
-            _open_url_default(url)
+
+        # Fall back to default handler when exe path is unavailable.
+        # Open first URL with default association, then request new tabs for the rest.
+        if not _open_url_default(urls[0]):
+            return False
+        for url in urls[1:]:
+            try:
+                webbrowser.open_new_tab(url)
+            except Exception:
+                _open_url_default(url)
         return True
     except Exception as e:
         logger.warning("Failed to restore browser tabs for %s: %s", app.get("app_name", "unknown"), e)
@@ -330,7 +335,15 @@ def restore_workspace(apps: list) -> list:
             # Handle applications
             else:
                 exe = _resolve_exe_path(app_name, exe_path)
-                if exe:
+                is_browser_with_tabs = _is_browser_item(app) and bool(tabs)
+
+                if is_browser_with_tabs:
+                    if _launch_browser_tabs(app, tabs):
+                        result["status"] = "success"
+                        result["launched"] = True
+                    else:
+                        result["status"] = "not_found"
+                elif exe:
                     try:
                         # Protocol handlers (e.g., ms-settings:) should use shell=True
                         if exe.endswith(":") or not exe.endswith(".exe"):
@@ -339,9 +352,6 @@ def restore_workspace(apps: list) -> list:
                             subprocess.Popen(exe)
                         result["status"] = "success"
                         result["launched"] = True
-
-                        if _is_browser_item(app) and tabs:
-                            _launch_browser_tabs(app, tabs)
                     except Exception as e:
                         logger.warning(f"Failed to launch {exe}: {e}")
                         result["status"] = "not_found"

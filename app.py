@@ -355,10 +355,11 @@ def _brand_svg() -> str:
     title = escape("Workspaces")
     return (
         "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256' role='img' aria-label='Workspaces'>"
-        "<rect width='256' height='256' rx='44' fill='#f5e642' stroke='#0a0a0a' stroke-width='14'/>"
-        "<rect x='38' y='38' width='180' height='180' rx='28' fill='none' stroke='#0a0a0a' stroke-width='8' stroke-dasharray='10 12' opacity='.45'/>"
-        "<path d='M64 86h128v20H64zM64 118h96v20H64zM64 150h128v20H64z' fill='#0a0a0a'/>"
-        f"<text x='128' y='214' text-anchor='middle' font-family='Arial, sans-serif' font-size='30' font-weight='700' fill='#0a0a0a'>{title}</text>"
+        "<rect width='256' height='256' rx='48' fill='#111111'/>"
+        "<rect x='24' y='24' width='208' height='208' rx='40' fill='none' stroke='#2e2e2e' stroke-width='4'/>"
+        "<path d='M56 74 86 182 128 96 170 182 200 74' fill='none' stroke='#2a2a2a' stroke-width='28' stroke-linecap='round' stroke-linejoin='round' opacity='.9'/>"
+        "<path d='M56 70 86 178 128 92 170 178 200 70' fill='none' stroke='#f5f5f5' stroke-width='20' stroke-linecap='round' stroke-linejoin='round'/>"
+        f"<text x='128' y='220' text-anchor='middle' font-family='Arial, sans-serif' font-size='24' font-weight='700' fill='#f5f5f5'>{title}</text>"
         "</svg>"
     )
 
