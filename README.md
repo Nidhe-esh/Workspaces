@@ -1,14 +1,19 @@
 # Workspaces
 
 <p align="center">
-  <img src="./Workspaces.logo" alt="Workspaces logo" width="120" />
+  <img src="./assets/readme-hero.svg" alt="Workspaces hero" width="100%" />
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/Nidhe-esh/Workspaces?label=latest%20release" alt="Latest Release" /></a>
+  <a href="../../releases/latest"><img src="https://img.shields.io/badge/download-latest%20release-22c55e?logo=github" alt="Download Latest Release" /></a>
+  <img src="https://img.shields.io/badge/status-active-3b82f6" alt="Status Active" />
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6" alt="Windows" />
   <img src="https://img.shields.io/badge/python-3.8%2B-3776AB" alt="Python" />
   <img src="https://img.shields.io/badge/builder-PyInstaller-5A2B81" alt="PyInstaller" />
+</p>
+
+<p align="center">
+  <img src="./assets/readme-logo.svg" alt="Workspaces logo" width="112" />
 </p>
 
 ### Save and restore your Windows workspace in one click.
@@ -81,7 +86,29 @@ Later, after closing everything:
 
 ## Screenshots
 
-App views used in this README are organized under the `screenshots/` folder with the following names:
+The app UI is shown directly below so users can quickly understand the workflow.
+
+### Saved Workspaces
+
+![Saved Workspaces](./screenshots/saved-workspaces-overview.png)
+
+### Workspace Editing (Include/Exclude Apps)
+
+![Workspace Edit](./screenshots/workspace-edit.png)
+
+### Restore Confirmation
+
+![Restore Confirmation](./screenshots/restore-confirmation.png)
+
+### New Workspace (Scanned)
+
+![New Workspace Scanned](./screenshots/new-workspace-scanned.png)
+
+### Manual Add Panel
+
+![Manual Add](./screenshots/manual-add-panel.png)
+
+Expected image files in the `screenshots/` folder:
 
 | Screen | File |
 | --- | --- |
