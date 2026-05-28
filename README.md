@@ -26,6 +26,25 @@ Windows · Portable EXE · Local-first · GitHub Releases
 
 ---
 
+## Table of Contents
+
+- [Why Workspaces](#why-workspaces)
+- [Highlights](#highlights)
+- [Quick Start](#quick-start)
+- [Quick Demo](#quick-demo)
+- [Screenshots](#screenshots)
+- [How It Works](#how-it-works)
+- [Example Workspace Data](#example-workspace-data)
+- [File Structure](#file-structure)
+- [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [Requirements](#requirements)
+- [Dependencies](#dependencies)
+- [FAQ](#faq)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Why Workspaces
 
 - Save your current app layout before switching tasks
@@ -108,16 +127,6 @@ The app UI is shown directly below so users can quickly understand the workflow.
 
 ![Manual Add](./screenshots/manual-add-panel.png)
 
-Expected image files in the `screenshots/` folder:
-
-| Screen | File |
-| --- | --- |
-| Saved Workspaces list | `screenshots/saved-workspaces-overview.png` |
-| Workspace edit/toggle view | `screenshots/workspace-edit.png` |
-| Restore confirmation screen | `screenshots/restore-confirmation.png` |
-| New Workspace after scan | `screenshots/new-workspace-scanned.png` |
-| Add manually panel | `screenshots/manual-add-panel.png` |
-
 ---
 
 ## How It Works
@@ -142,7 +151,7 @@ When restoring, Workspaces uses a fallback chain:
 
 ---
 
-### Example workspace data
+### Example Workspace Data
 
 ```json
 {
