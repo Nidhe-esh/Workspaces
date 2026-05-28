@@ -1,76 +1,122 @@
-# Workspaces — Windows Application Manager
+# Workspaces
 
-**Save and restore your entire Windows desktop workspace with one click.**
+<p align="center">
+  <img src="./Workspaces.logo" alt="Workspaces logo" width="120" />
+</p>
 
-Workspaces is a standalone Windows desktop application that captures your currently running applications, browser tabs, and files, then restores them all instantly. Perfect for:
-- Switching between project setups (frontend dev, backend dev, data analysis, etc.)
-- Saving specific working contexts
-- Quick context switching on a shared machine
-- Automating repetitive app launches
+<p align="center">
+  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/Nidhe-esh/Workspaces?label=latest%20release" alt="Latest Release" /></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6" alt="Windows" />
+  <img src="https://img.shields.io/badge/python-3.8%2B-3776AB" alt="Python" />
+  <img src="https://img.shields.io/badge/builder-PyInstaller-5A2B81" alt="PyInstaller" />
+</p>
+
+### Save and restore your Windows workspace in one click.
+
+Workspaces captures your running apps, browser tabs, and files, then brings them back when you need them again. It is designed for fast context switching, repeatable setups, and a clean local-first workflow.
+
+[Download Latest Release](../../releases/latest) · [Report Bug](../../issues) · [Request Feature](../../issues)
+
+Windows · Portable EXE · Local-first · GitHub Releases
 
 ---
 
-## Features ✨
+## Why Workspaces
 
-✅ **Scan Running Apps** — Automatically detects all running user applications and ignores system background processes  
-✅ **Smart Browser Tab Detection** — Captures open tabs in Chrome, Firefox, and Edge  
-✅ **Save Workspaces** — Store snapshots of your desktop workspace with custom names  
-✅ **Restore with One Click** — Launch all saved apps instantly (with intelligent fallback if paths change)  
-✅ **Intelligent Path Resolution** — Finds apps even if installation paths change (includes 30+ known apps)  
-✅ **Website Support** — Add and restore bookmarked websites  
-✅ **Windows Native UI** — Desktop app (no browser chrome), lightweight and fast  
+- Save your current app layout before switching tasks
+- Restore browser tabs and desktop apps together
+- Reopen files and folders even if app paths change
+- Keep everything local in `workspaces.json`
 
 ---
 
-## Installation
+## Highlights
 
-### Option A: Download & Run (Recommended for Users)
-
-1. Download **`Workspaces.exe`** from the [Releases page](../../releases)
-2. Double-click to run — no installation needed (portable exe)
-3. Windows may show a security warning — click **"More info"** → **"Run anyway"**
-
-### Option B: Build From Source (For Developers)
-
-See [DEV_SETUP.md](DEV_SETUP.md) for Python environment setup and building the exe yourself.
+| Feature | What it does |
+| --- | --- |
+| App capture | Detects running user apps and ignores background system noise |
+| Browser tabs | Saves open tabs from Chrome, Firefox, and Edge |
+| One-click restore | Reopens your saved workspace instantly |
+| Path fallback | Tries known install locations when apps move |
+| Website support | Save and restore bookmarked websites |
+| Native Windows UI | Runs as a desktop app, not a browser app |
 
 ---
 
 ## Quick Start
 
-### 1. Scan Your Desktop
-Click **"Scan Workspace"** to capture all running apps and browser tabs. System apps are hidden by default.
+### 1. Download
 
-### 2. Save a Workspace
-- Review the scanned apps
-- Give your workspace a name (e.g., "Frontend Dev", "Data Analysis")
-- Click **"Save"**
+Get the latest **`Workspaces.exe`** from the [Releases page](../../releases/latest).
 
-### 3. Close Some Apps
-Open different apps or close some. Then:
+### 2. Run
 
-### 4. Restore Your Workspace
-- From the **"Workspaces"** tab, select a saved workspace
-- Click **"Restore"** to launch all apps instantly
+Double-click the EXE. No installer is required.
+
+### 3. Scan and save
+
+Click **Scan Workspace**, review the detected apps, give the workspace a name, then save it.
+
+### 4. Restore later
+
+Open the **Workspaces** tab and click **Restore** to bring everything back.
+
+If Windows shows a security prompt, choose **More info** then **Run anyway**.
+
+---
+
+## Quick Demo
+
+```text
+You are working in VS Code, Chrome, and File Explorer.
+→ Click Scan Workspace
+→ Save it as “Frontend Dev”
+
+Later, after closing everything:
+→ Click Restore
+→ Workspaces relaunches the same setup
+```
+
+---
+
+## Screenshots
+
+App views used in this README are organized under the `screenshots/` folder with the following names:
+
+| Screen | File |
+| --- | --- |
+| Saved Workspaces list | `screenshots/saved-workspaces-overview.png` |
+| Workspace edit/toggle view | `screenshots/workspace-edit.png` |
+| Restore confirmation screen | `screenshots/restore-confirmation.png` |
+| New Workspace after scan | `screenshots/new-workspace-scanned.png` |
+| Add manually panel | `screenshots/manual-add-panel.png` |
 
 ---
 
 ## How It Works
 
 ### Scanning
-**Process:**
-- Enumerates all visible Windows (Win32 API `EnumWindows`)
-- Matches each window to its originating process
-- Extracts executable path and window title
-- Detects browser tabs using DevTools Protocol or window title parsing
 
-**System vs User Apps:**
-- System apps (Windows, drivers, background services) are hidden with a "grayed" indicator
-- Only user apps are saved by default (but system apps can be included if needed)
-- Filtering uses both path-based (e.g., `C:\Windows\*`) and name-based rules
+Workspaces walks the active desktop windows, matches them to processes, extracts executable paths and titles, and tries to identify browser tabs when possible.
 
 ### Saving
-Data stored in `workspaces.json`:
+
+Workspace data is stored locally in `workspaces.json`. A workspace includes saved apps, tabs, and any websites you add manually.
+
+### Restoring
+
+When restoring, Workspaces uses a fallback chain:
+
+1. Launch the exact saved executable path if it still exists
+2. Check known install locations for popular apps
+3. Try path-based name extraction
+4. Open files with their default app when a filename is detected
+5. Open the parent folder if the file no longer exists
+
+---
+
+### Example workspace data
+
 ```json
 {
   "workspaces": [
@@ -92,17 +138,6 @@ Data stored in `workspaces.json`:
   ]
 }
 ```
-
-### Restoring (Fallback Chain)
-When you restore, Workspaces uses an **intelligent 5-step fallback chain** to re-launch apps:
-
-1. **Exact Exe Path** — If the saved exe path still exists, launch it directly
-2. **Known App Locations** — Check 30+ standard install locations (Chrome, Firefox, VSCode, Visual Studio, Office, etc.)
-3. **Path Extraction** — Parse app names to find likely install folders
-4. **File Opener** — If a window title contains a filename, open that file with the default app
-5. **Parent Folders** — If file is missing, open its parent folder
-
-**Result:** Apps are restored even if you reinstalled them or moved them to a different path.
 
 ---
 
@@ -222,46 +257,37 @@ Built with:
 
 ---
 
-## License
+## FAQ
 
-MIT License — See LICENSE file (if included) or contact the author.
+**Q: Can I use this on a Mac or Linux?**  
+A: Not currently. Workspaces uses Windows-specific APIs.
+
+**Q: Does Workspaces store anything online?**  
+A: No. Everything stays local unless you choose to share a file or release artifact.
+
+**Q: Can I share my workspace setup with someone else?**  
+A: Yes. Copy `workspaces.json` to another machine running Workspaces.
+
+**Q: Will it remember app positions and size?**  
+A: Not yet. It focuses on relaunching apps, tabs, and files.
 
 ---
 
 ## Contributing
 
-Bug reports, feature requests, and pull requests are welcome!
+Bug reports, feature requests, and pull requests are welcome.
 
-**Common improvements:**
-- [ ] Icon for exe
-- [ ] Inno Setup installer (.msi) for easy uninstall
-- [ ] Keyboard shortcuts
-- [ ] Website group management
-- [ ] GitHub Actions CI/CD for automated builds
-- [ ] Portable vs installer versions
+If you want to help, good next improvements are:
 
----
-
-## FAQ
-
-**Q: Can I use this on a Mac or Linux?**  
-A: Not currently. Workspaces uses Windows-specific APIs (Win32). A macOS version would require separate development.
-
-**Q: Will Workspaces run at startup?**  
-A: Not by default. You can add it to Windows Startup folder manually.
-
-**Q: Can I share workspaces between users?**  
-A: Yes, via the `workspaces.json` file. Just copy it to another user's Workspaces folder.
-
-**Q: Does it track app state (window size, position)?**  
-A: Currently no — it only launches apps. Future versions may capture and restore window state.
-
-**Q: Is my data secure?**  
-A: All data is stored locally in `workspaces.json`. No cloud sync or remote servers.
+- A better icon and branding pass
+- Keyboard shortcuts
+- Website groups
+- An installer build
+- GitHub Actions release automation
 
 ---
 
-## Thanks
+## License
 
-Built with ❤️ for Windows power users.
+MIT License. See the LICENSE file if included.
 
