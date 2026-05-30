@@ -87,6 +87,10 @@ Open the **Workspaces** tab and click **Restore** to bring everything back.
 
 If Windows shows a security prompt, choose **More info** then **Run anyway**.
 
+## Update
+
+Use the **Check for updates** button in Settings to open the GitHub Releases page. Download the latest EXE from there, and if you publish checksums or signatures, verify those before replacing your local copy.
+
 ---
 
 ## Quick Demo

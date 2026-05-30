@@ -38,6 +38,8 @@ NAME_RX = re.compile(r"^[\w .\-]{1,120}$")
 DATA_LOCK = threading.Lock()
 APP_DIR = Path(__file__).resolve().parent
 BRAND_ASSET_NAMES = ("Workspaces.logo", "favicon.ico")
+VERSION = "1.0.0"
+RELEASES_URL = "https://github.com/Nidhe-esh/Workspaces/releases/latest"
 
 
 # -- Logging -------------------------------------------------------------------
@@ -416,6 +418,11 @@ def index():
 @app.route("/api/scan", methods=["POST"])
 def api_scan():
     return jsonify({"ok": True, "data": scan_workspace()})
+
+
+@app.route("/api/version", methods=["GET"])
+def api_version():
+    return jsonify({"ok": True, "version": VERSION, "release_url": RELEASES_URL})
 
 
 # List workspaces

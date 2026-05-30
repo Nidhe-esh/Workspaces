@@ -75,6 +75,29 @@ async function initSettingsUI() {
   setToggleState(document.getElementById("set-show-system"), state.settings.show_system_apps);
   setToggleState(document.getElementById("set-auto-save"), state.settings.auto_save_on_toggle);
   applyThemeState(state.settings.dark_mode === true);
+  fetchVersionInfo();
+}
+
+async function fetchVersionInfo() {
+  const versionEl = document.getElementById("app-version-lbl");
+  if (!versionEl) return;
+  try {
+    const res = await api("GET", "/api/version");
+    if (res && res.ok) {
+      versionEl.textContent = res.version || "1.0.0";
+      window.__WORKSPACES_RELEASE_URL = res.release_url || "https://github.com/Nidhe-esh/Workspaces/releases/latest";
+      return;
+    }
+  } catch {
+    // fall back to the built-in version label
+  }
+  versionEl.textContent = "1.0.0";
+  window.__WORKSPACES_RELEASE_URL = "https://github.com/Nidhe-esh/Workspaces/releases/latest";
+}
+
+function checkForUpdates() {
+  const url = window.__WORKSPACES_RELEASE_URL || "https://github.com/Nidhe-esh/Workspaces/releases/latest";
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 // ── API helper ────────────────────────────────────────────────────────────────
