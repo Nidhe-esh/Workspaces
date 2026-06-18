@@ -89,7 +89,7 @@ If Windows shows a security prompt, choose **More info** then **Run anyway**.
 
 ## Update
 
-Use the **Check for updates** button in Settings to open the GitHub Releases page. Unsigned builds may show a Windows warning, so verify the `Workspaces-v1.0.0.sha256.txt` hash against the EXE before running it.
+Use the **Check for updates** button in Settings to open the GitHub Releases page. Unsigned builds may show a Windows warning, so verify the `Workspaces-v2.0.0.sha256.txt` hash against the EXE before running it.
 
 ---
 

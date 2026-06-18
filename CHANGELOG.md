@@ -4,6 +4,20 @@ All notable changes to the Workspaces project are documented in this file.
 
 ---
 
+## [2.0.0] — 2026-06-18
+
+**Browser restore reliability update**
+
+### Fixes
+- Fixed Brave browser restore so saved tabs reopen in the browser instead of being converted into search results.
+- Improved browser restore fallback behavior when only tab titles are available.
+
+### Packaging
+- Updated the app version to `2.0.0`.
+- Published the matching release build and checksum artifact.
+
+---
+
 ## [1.0.0] — 2026-03-31
 
 **Initial Release** 🎉

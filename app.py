@@ -38,7 +38,7 @@ NAME_RX = re.compile(r"^[\w .\-]{1,120}$")
 DATA_LOCK = threading.Lock()
 APP_DIR = Path(__file__).resolve().parent
 BRAND_ASSET_NAMES = ("Workspaces.logo", "favicon.ico")
-VERSION = "1.0.0"
+VERSION = "2.0.0"
 RELEASES_URL = "https://github.com/Nidhe-esh/Workspaces/releases/latest"
 
 
