@@ -98,7 +98,11 @@ def _browser_urls(tabs: list) -> list[str]:
 
 
 def _tab_title_fallback_urls(tabs: list) -> list[str]:
-    """Convert non-URL tab labels into searchable URLs for restore fallback."""
+    """Convert tab labels into safe URL-like values when possible.
+
+    Plain page titles are intentionally skipped here because turning them into
+    search queries restores the wrong content and confuses users.
+    """
     urls = []
     seen = set()
 
@@ -119,8 +123,8 @@ def _tab_title_fallback_urls(tabs: list) -> list[str]:
         if re.match(r"^[a-z0-9.-]+\.[a-z]{2,}(/.*)?$", compact):
             candidate = _normalize_url(compact)
         else:
-            # Graceful fallback: open search results for plain tab titles.
-            candidate = f"https://www.google.com/search?q={urllib.parse.quote_plus(label)}"
+            # Plain titles are not safe to transform into a URL.
+            continue
 
         if candidate and candidate not in seen:
             seen.add(candidate)
@@ -133,11 +137,31 @@ def _launch_browser_tabs(app: dict, tabs: list) -> bool:
     urls = _browser_urls(tabs)
     if not urls:
         urls = _tab_title_fallback_urls(tabs)
-    if not urls:
-        return False
-
     exe_path = (app.get("exe_path") or "").strip()
     launch_args = None
+
+    if not urls:
+        # If tab titles were captured but no safe URLs could be reconstructed,
+        # ask the browser to restore its previous session instead of opening a
+        # search result or a blank page.
+        if exe_path and Path(exe_path).exists():
+            app_name = (app.get("app_name") or "").lower()
+            if any(hint in app_name or hint in exe_path.lower() for hint in ("chrome", "chromium", "brave", "edge", "opera", "vivaldi", "thorium", "arc")):
+                launch_args = [exe_path, "--restore-last-session"]
+            elif any(hint in app_name or hint in exe_path.lower() for hint in ("firefox", "waterfox", "librewolf")):
+                launch_args = [exe_path, "-restoreLastSession"]
+            else:
+                launch_args = [exe_path]
+
+        if launch_args:
+            try:
+                subprocess.Popen(launch_args)
+                return True
+            except Exception as e:
+                logger.warning("Failed to restore browser session for %s: %s", app.get("app_name", "unknown"), e)
+                return False
+
+        return False
 
     if exe_path and Path(exe_path).exists():
         # Launch once with all URLs to avoid creating a separate blank browser window.
@@ -341,6 +365,17 @@ def restore_workspace(apps: list) -> list:
                     if _launch_browser_tabs(app, tabs):
                         result["status"] = "success"
                         result["launched"] = True
+                    elif exe:
+                        try:
+                            if exe.endswith(":") or not exe.endswith(".exe"):
+                                subprocess.Popen(exe, shell=True)
+                            else:
+                                subprocess.Popen(exe)
+                            result["status"] = "success"
+                            result["launched"] = True
+                        except Exception as e:
+                            logger.warning(f"Failed to launch browser {exe}: {e}")
+                            result["status"] = "not_found"
                     else:
                         result["status"] = "not_found"
                 elif exe:

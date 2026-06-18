@@ -299,7 +299,7 @@ def _browser_tabs(name: str, titles: list[str] | None = None) -> list:
         return out
 
     compact_name = re.sub(r"[^a-z0-9]+", "", name.lower())
-    if "chrome" in compact_name or "chromium" in compact_name:
+    if "chrome" in compact_name or "chromium" in compact_name or "brave" in compact_name:
         cdp_tabs = _chrome_tabs(titles)
         title_tabs = _tabs_from_titles(titles, r"\s*[-—–]\s*Google Chrome(?:\s*\(.*\))?$", "Google Chrome")
         uia_tabs = _uia_tabs(("chrome", "brave", "opera", "vivaldi", "arc", "thorium", "chromium"), "Google Chrome")
